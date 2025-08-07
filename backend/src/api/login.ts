@@ -18,6 +18,7 @@ async function screenshot(page: any, step: string) {
   }
 }
 
+//Part 1 a done
 router.post("/login", async (req: Request, res: Response) => {
   const { phone_number } = req.body;
   if (!phone_number) {
