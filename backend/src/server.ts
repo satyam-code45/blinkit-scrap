@@ -3,6 +3,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import dotenv from "dotenv";
 import loginRoutes from "./api/login.js";
+import cartRoutes from "./api/cart.js";
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api", loginRoutes);
+app.use("/api", cartRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

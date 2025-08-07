@@ -1,7 +1,10 @@
 import { Router, Request, Response } from "express";
-import { launchBrowser } from "../browser/puppeteer.js";
 import { redisClient } from "../db/redis.js";
 import { SessionModel } from "../db/mongo.js";
+import {
+  createBlinkitSession,
+  getBlinkitSession,
+} from "../utils/pageSessionManager.js";
 
 const router = Router();
 
@@ -18,32 +21,36 @@ async function screenshot(page: any, step: string) {
   }
 }
 
-//Part 1 a done
 router.post("/login", async (req: Request, res: Response) => {
   const { phone_number } = req.body;
   if (!phone_number) {
     return res.status(400).json({ error: "Phone number required" });
   }
 
-  const { browser, page } = await launchBrowser();
+  const { page } = await createBlinkitSession(phone_number);
 
   try {
-    await page.goto("https://www.blinkit.com", { waitUntil: "networkidle2" });
     await screenshot(page, "1_home_loaded");
 
     await page.type('input[name="select-locality"]', "The Zero Mile Cafe", {
       delay: 100,
     });
-    await page.waitForSelector(".location-show-addresses-v1", {
-      timeout: 20000,
-    });
 
+    // Wait for dropdown suggestion to appear
+    await page.waitForSelector(
+      ".location-addresses-v1 .LocationSearchList__LocationListContainer-sc-93rfr7-0",
+      { timeout: 10000 }
+    );
+
+    // Click the first suggestion
     await page.evaluate(() => {
-      const container = document.querySelector(".location-show-addresses-v1");
-      const first = container?.querySelector("div, li") as HTMLElement | null;
-      if (!first) throw new Error("No location suggestion found!");
-      first.scrollIntoView({ behavior: "smooth", block: "center" });
-      first.click();
+      const firstOption = document.querySelector(
+        ".location-addresses-v1 .LocationSearchList__LocationListContainer-sc-93rfr7-0"
+      ) as HTMLElement | null;
+
+      if (!firstOption) throw new Error("No location suggestion found!");
+      firstOption.scrollIntoView({ behavior: "smooth", block: "center" });
+      firstOption.click();
     });
 
     await delay(1500);
@@ -51,7 +58,7 @@ router.post("/login", async (req: Request, res: Response) => {
 
     const loginSelector = ".ProfileButton__Container-sc-975teb-3";
     await page.waitForSelector(loginSelector, { timeout: 15000 });
-    await page.evaluate((selector) => {
+    await page.evaluate((selector: string) => {
       document.querySelector<HTMLElement>(selector)?.click();
     }, loginSelector);
     await screenshot(page, "3_login_clicked");
@@ -71,19 +78,76 @@ router.post("/login", async (req: Request, res: Response) => {
 
     await screenshot(page, "5_continue_clicked");
 
+    res.json({ status: "OTP_SENT" });
+  } catch (err: any) {
+    console.error("Login flow error:", err.message);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+router.post("/submit-otp", async (req: Request, res: Response) => {
+  const { phone_number, otp } = req.body;
+
+  if (!phone_number || !otp) {
+    return res.status(400).json({ error: "Phone number and OTP required" });
+  }
+
+  const session = getBlinkitSession(phone_number);
+  if (!session || !session.page) {
+    return res.status(404).json({ error: "No active session for this number" });
+  }
+
+  const page = session.page;
+
+  try {
+    await screenshot(page, `otp_before_filling_${phone_number}`);
+
+    // Wait for OTP inputs
+    await page.waitForSelector('input[data-test-id="otp-text-box"]', {
+      timeout: 10000,
+    });
+
+    const otpInputs = await page.$$(
+      'input[data-test-id="otp-text-box"][type="tel"]'
+    );
+
+    if (otpInputs.length === 0) {
+      throw new Error("No OTP input fields detected.");
+    }
+
+    const otpDigits = otp
+      .toString()
+      .split("")
+      .filter((d: string) => /^\d$/.test(d));
+
+    if (otpDigits.length !== otpInputs.length) {
+      throw new Error(
+        `Expected ${otpInputs.length} OTP digits, but received ${otpDigits.length}.`
+      );
+    }
+
+    // ✅ Type entire OTP into the first input only
+    const firstInput = otpInputs[0];
+    await firstInput.click({ clickCount: 2 });
+    await firstInput.type(otpDigits.join(""));
+
+    await screenshot(page, `otp_after_filling_${phone_number}`);
+
+    await delay(1500);
+
+    await screenshot(page, `otp_after_verification_${phone_number}`);
+
+    await delay(1500);
+
+    await screenshot(page, `otp_final_1${phone_number}`);
+
     const cookies = await page.cookies();
-
-    const localStorageData = await page.evaluate(() => {
-      return Object.fromEntries(
-        Object.entries(localStorage).map(([k, v]) => [k, v as string])
-      );
-    });
-
-    const sessionStorageData = await page.evaluate(() => {
-      return Object.fromEntries(
-        Object.entries(sessionStorage).map(([k, v]) => [k, v as string])
-      );
-    });
+    const localStorageData = await page.evaluate(() =>
+      Object.fromEntries(Object.entries(localStorage).map(([k, v]) => [k, v]))
+    );
+    const sessionStorageData = await page.evaluate(() =>
+      Object.fromEntries(Object.entries(sessionStorage).map(([k, v]) => [k, v]))
+    );
 
     const sessionData = {
       phone_number,
@@ -97,71 +161,15 @@ router.post("/login", async (req: Request, res: Response) => {
     await redisClient.set(
       `session:${phone_number}`,
       JSON.stringify(sessionData),
-      {
-        EX: 600, 
-      }
+      { EX: 600 }
     );
 
     await SessionModel.create(sessionData);
 
-    console.log("Session saved");
-    res.json({ status: "OTP_SENT" });
+    return res.json({ status: "OTP_FILLED" });
   } catch (err: any) {
-    console.error("Login flow error:", err.message);
-    res.status(500).json({ error: "Login failed" });
-  } finally {
-    await browser.close();
-  }
-});
-
-router.post("/submit-otp", async (req: Request, res: Response) => {
-  const { phone_number } = req.body;
-  if (!phone_number) {
-    return res.status(400).json({ error: "Phone number is required" });
-  }
-
-  const sessionStr = await redisClient.get(`session:${phone_number}`);
-  if (!sessionStr) {
-    return res.status(404).json({ error: "Session not found" });
-  }
-
-  const session = JSON.parse(sessionStr);
-  const { browser, page } = await launchBrowser();
-
-  try {
-    await page.goto(session.currentURL || "https://www.blinkit.com", {
-      waitUntil: "networkidle2",
-    });
-
-    await page.setCookie(...session.cookies);
-
-    await page.evaluate(
-      (
-        localData: Record<string, string>,
-        sessionData: Record<string, string>
-      ) => {
-        Object.entries(localData).forEach(([k, v]) =>
-          localStorage.setItem(k, v)
-        );
-        Object.entries(sessionData).forEach(([k, v]) =>
-          sessionStorage.setItem(k, v)
-        );
-      },
-      session.localStorage,
-      session.sessionStorage
-    );
-
-    await page.reload({ waitUntil: "networkidle2" });
-
-    await screenshot(page, `otp_screen_${phone_number}`);
-    console.log("Screenshot captured after OTP page loaded");
-
-    res.json({ status: "SCREENSHOT_CAPTURED" });
-  } catch (err: any) {
-    console.error("OTP submit error:", err.message);
-    res.status(500).json({ error: "Failed to capture OTP screen" });
-  } finally {
-    await browser.close();
+    console.error("OTP submission error:", err.message);
+    return res.status(500).json({ error: "OTP submission failed" });
   }
 });
 
