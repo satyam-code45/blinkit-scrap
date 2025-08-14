@@ -16,7 +16,7 @@ function findChromePath(): string | undefined {
 
 
 export async function launchBrowser(): Promise<{ browser: Browser; page: Page }> {
-  const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH || findChromePath();
+  const chromePath = findChromePath();
 
   console.log("Using Chrome binary:", chromePath || "NOT FOUND");
 

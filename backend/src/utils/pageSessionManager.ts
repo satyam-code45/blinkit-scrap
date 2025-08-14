@@ -1,9 +1,9 @@
-// utils/pageSessionManager.ts
 import { launchBrowser } from "../browser/puppeteer.js";
+import  { Browser, Page } from "puppeteer";
 
 type Session = {
-  browser: any;
-  page: any;
+  browser: Browser;
+  page: Page;
 };
 
 const sessions = new Map<string, Session>();

@@ -17,7 +17,7 @@ async function screenshot(page: any, step: string) {
       fullPage: true,
     });
   } catch (err) {
-    console.warn(`⚠️ Screenshot failed at ${step}:`, err);
+    console.warn(`Screenshot failed at ${step}:`, err);
   }
 }
 
@@ -36,7 +36,6 @@ router.post("/login", async (req: Request, res: Response) => {
       delay: 100,
     });
 
-    // Wait for dropdown suggestion to appear
     await page.waitForSelector(
       ".location-addresses-v1 .LocationSearchList__LocationListContainer-sc-93rfr7-0",
       { timeout: 10000 }
@@ -61,12 +60,14 @@ router.post("/login", async (req: Request, res: Response) => {
     await page.evaluate((selector: string) => {
       document.querySelector<HTMLElement>(selector)?.click();
     }, loginSelector);
+
     await screenshot(page, "3_login_clicked");
 
     const phoneInputSelector =
       'input[type="tel"], input[placeholder*="Enter"], input[name*="phone"]';
     await page.waitForSelector(phoneInputSelector, { timeout: 20000 });
     await page.type(phoneInputSelector, phone_number, { delay: 100 });
+    
     await screenshot(page, "4_mobile_filled");
 
     await page.evaluate(() => {
@@ -93,6 +94,7 @@ router.post("/submit-otp", async (req: Request, res: Response) => {
   }
 
   const session = getBlinkitSession(phone_number);
+
   if (!session || !session.page) {
     return res.status(404).json({ error: "No active session for this number" });
   }
@@ -102,7 +104,6 @@ router.post("/submit-otp", async (req: Request, res: Response) => {
   try {
     await screenshot(page, `otp_before_filling_${phone_number}`);
 
-    // Wait for OTP inputs
     await page.waitForSelector('input[data-test-id="otp-text-box"]', {
       timeout: 10000,
     });
@@ -126,8 +127,10 @@ router.post("/submit-otp", async (req: Request, res: Response) => {
       );
     }
 
-    // ✅ Type entire OTP into the first input only
     const firstInput = otpInputs[0];
+    if (!firstInput) {
+      throw new Error("Input filed is missing!")
+    }
     await firstInput.click({ clickCount: 2 });
     await firstInput.type(otpDigits.join(""));
 
