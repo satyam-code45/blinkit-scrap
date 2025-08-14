@@ -75,7 +75,7 @@ npm run build
 ### 4. Start the services using Docker
 
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ---
@@ -88,7 +88,7 @@ docker-compose up -d --build
 
 ```json
 {
-  "phone_number": "6299692538"
+  "phone_number": "123456789"
 }
 ```
 
@@ -100,7 +100,7 @@ docker-compose up -d --build
 
 ```json
 {
-  "phone_number": "6299692538",
+  "phone_number": "123456789",
   "otp": "9722"
 }
 ```
