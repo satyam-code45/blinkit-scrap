@@ -114,7 +114,7 @@ docker compose up -d --build
 ```json
 {
   "products_url": "https://blinkit.com/prn/kelloggs-chocos-crunchy-bites-kids-cereal-pringles-sour-cream-onion-potato-chips-40-g-combo/prid/578634",
-  "phone_number": "6299692538"
+  "phone_number": "123456789"
 }
 ```
 
