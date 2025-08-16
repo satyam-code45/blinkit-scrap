@@ -45,33 +45,61 @@ router.post("/hyperpure", async (req, res) => {
       throw new Error("No option found to click");
     }
 
-    await delay(3000); 
+    try {
+      await page.waitForSelector(".CatalogCard_marginBottom24px__r_9vu", {
+        visible: true,
+        timeout: 10000,
+      });
+      await screenshot(page, "_results_page_loaded");
+    } catch (e: any) {
+      if (e.name === "TimeoutError") {
+        console.log(
+          "Selector not found, likely no products. Returning empty array."
+        );
+        return res.status(200).json({
+          message: "Search completed, but no products were found.",
+          products: [],
+        });
+      }
+    }
 
-   
-    const productDivs = await page.evaluate(() => {
-      const allDivs = Array.from(document.querySelectorAll("div"));
-      return allDivs
-        .map((div) => div.outerHTML)
-        .filter(
-          (html) =>
-            html.includes("CatalogCard") || html.toLowerCase().includes("price")
-        )
-        .slice(0, 5); 
+    const products = await page.evaluate(() => {
+      const productCards = document.querySelectorAll(
+        ".CatalogCard_marginBottom24px__r_9vu"
+      );
+
+      const productData: { name: string; price: string }[] = [];
+
+      productCards.forEach((card) => {
+        const nameElement = card.querySelector(
+          ".CatalogCard_truncate__dW5IB"
+        ) as HTMLElement;
+        const name = nameElement ? nameElement.innerText.trim() : null;
+
+        const priceElement = card.querySelector(
+          ".CatalogCard_price__Pf25D"
+        ) as HTMLElement;
+        const price = priceElement ? priceElement.innerText.trim() : null;
+
+        if (name && price) {
+          productData.push({ name, price });
+        }
+      });
+
+      return productData;
     });
 
-    console.log("Potential product name/price divs");
-    productDivs.forEach((html, idx) => {
-      console.log(`DIV ${idx + 1}:\n${html}\n`);
-    });
+    console.log("Scraped Products:", products);
 
     return res.status(200).json({
-      message: "First option clicked, logged potential product divs!",
+      message: `Successfully scraped ${products.length} products.`,
+      products: products,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
-    return res.status(400).json({
-      message: "Something went wrong!",
-      error: error,
+    return res.status(500).json({
+      message: "Something went wrong during the scraping process!",
+      error: error.message,
     });
   }
 });
