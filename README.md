@@ -1,5 +1,9 @@
 # 💼 Blinkit Product Scraper
 
+
+
+https://github.com/user-attachments/assets/86aded1a-b36e-4c16-84b9-1fa61760000d
+
 A backend API built using Node.js and TypeScript to scrape product details from Blinkit. It simulates user login and allows authenticated users to fetch product data using Puppeteer.
 
 ---
